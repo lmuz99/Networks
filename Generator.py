@@ -11,8 +11,15 @@ def GenerateInitial(nodes, m):
     n = 0       #number of nodes in network
     nubs = 0    #keep track of number of entries of vert_list without calling len function
 
-    
-    return edge_list, vert_list, n, nubs
+    for i in nodes:
+        for j in m:
+            #choose n*m random pairs from the N(N-1)/2 pairs
+            #check we haven't chose pairs twice
+            #work out which pairs these correspond to
+            #fill in edge list
+            #leave opportunity to break here for analysis
+
+    return edge_list, sampling_list, n, nubs
 
 def SampleNode(sample_list, max_val, number):
     pass
@@ -20,7 +27,7 @@ def SampleNode(sample_list, max_val, number):
 def BA(n_total, m, n_initial):
     
     #Generate initial network as random with n_inital nodes of m edges
-    edge_list, sampling_list, n, nubs = GenerateInitial(nodes, m)
+    edge_list, sampling_list, n, nubs = GenerateInitial(n_initial, m)
 
     pass
 
