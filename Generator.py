@@ -2,29 +2,39 @@ import numpy as np
 import scipy as sp
 import random
 from numba import jit
-from numba import cuda
 from numba import prange
 from numba.typed import List
 import networkx as nx
 import timeit
-import cProfile
+
 
 @jit(nopython = True)
 def GenerateInitial(nodes, m):
     #Method to generate initial network before BA attachment with nodes and m edges per node
-    n = 0       #number of nodes in network
-    nubs = 0    #keep track of number of entries of vert_list without calling len function
     edges = nodes * m
 
     edge_list = randomEdges(edges, nodes-1)
-    adj_list = edgeToAdjacency(edge_list, nodes)
-    sampling_list = [len(x) for x in adj_list]
+    adj_list = [[np.int32(x) for x in range(0)] for i in range(nodes)]
+    
+    adj_list, count = edgeToAdjacency(edge_list, adj_list, nodes)
+    
+    while count != 0:
+        edge_list = randomEdges(count, nodes-1)
+        adj_list, count = edgeToAdjacency(edge_list, adj_list, nodes)
+   
+    sampling_list = List()
+    freq_list = [len(x) for x in adj_list]
+    
+    for i in range(len(freq_list)):
+        for j in range(freq_list[i]):
+            sampling_list.append(i)
+    
     #convert to adj list
     #get n and nubs
     #get sample list as len of each element of edge list
 
 
-    return adj_list, sampling_list, n, nubs
+    return adj_list, sampling_list, edges
 
 
 @jit(nopython = True)
@@ -38,6 +48,15 @@ def randomSample(max_index):
         
     return (x1, x2)
 
+@jit(nopython = True, parallel=True)
+def BASample(node_id, sampling_list):
+    index = random.randint(0, len(sampling_list)-1)
+    edge = np.array(sampling_list[index], node_id)
+    
+    sampling_list.append(edge[0])
+    sampling_list.append(edge[1])
+    return edge, sampling_list
+
 
 @jit(nopython = True, parallel = True)
 def randomEdges(n_edges, max_index):
@@ -50,48 +69,59 @@ def randomEdges(n_edges, max_index):
     return edge_list
 
 @jit(nopython = True)
-def edgeToAdjacency(edge_list, nodes):
+def edgeToAdjacency(edge_list, adj_list, nodes):
     
     #this will do for now, but can potentially speed up by producing a density matrix
     #by creating a numpy 2d array and filling values, more memory intensive but
     #no costly creation of empty lists
-
     #alternatively find a good sorting algo and then we can create arrays as we go rather than needing to initalise empty ones from the start
-
-    adj_list = [[np.int32(x) for x in range(0)] for i in range(nodes)]
-
-    #could split this up/ sort to allow for multithreading down the line
+    
+    count = 0
+    
     for a in edge_list:
         #only need check for one of the nodes as always write both lists together
-        if isEdgePresent(a[1], a[0]):
-            #get new pair and check this is unique
-            is_pair_unique = False
-            while not is_pair_unique:
-                #generate new pair
-                #if not filled then 
-                pass
-        else:
+        valid = True
+        if len(adj_list[a[0]]) != 0:
+            if isEdgePresent(a[1], adj_list[a[0]]) == True:
+                valid = False
+                count += 1
+                #get new pair and check this is unique
+                #is_pair_unique = False
+                #while not is_pair_unique:
+                    #generate new pair
+                    #if not filled then 
+                #   pass
+        if valid:
             adj_list[a[0]].append(a[1])
             adj_list[a[1]].append(a[0])
 
+    return adj_list, count
 
-    return adj_list
-
-@jit(nopython = True, parallel = True)
+@jit(nopython = True)
 def isEdgePresent(val, list):
-    for i in prange(len(list)):
+    for i in range(len(list)):
         if list[i] == val:
             return True
-        else:
-            return False
+    return False
         
 
 
 def BA(n_total, m, n_initial):
     
     #Generate initial network as random with n_inital nodes of m edges
-    edge_list, sampling_list, n, nubs = GenerateInitial(n_initial, m)
-
+    adj_list, sampling_list, n_edges = GenerateInitial(n_initial, m)
+    n_current = n_initial
+    
+    for i in range(n_total - n_initial):   
+        n_current += 1
+        edge, sampling_list = BASample(n_current, sampling_list)
+        adj_list, count = edgeToAdjacency(edge_list, adj_list, nodes)
+    
+    #now drive network using samoling
     pass
 
+a, b, c = GenerateInitial(5, 1)
+
+#NOTES: Currently need to split BA sample, into sampling and updating sampling list
+#So sample, then we need to check this is not a duplicate, before finally updating sampling list
 
