@@ -10,7 +10,22 @@ import timeit
 
 @jit(nopython = True)
 def GenerateInitial(nodes, m):
-    #Method to generate initial network before BA attachment with nodes and m edges per node
+    """
+    Method to generate initial random network, method generates prospective edges in 
+    parallel before checking for duplicates and removing these, generating more edges
+    until m*nodes unique edges have been created. These are then transferred from an
+    edge list to an adjacency list format, with a sampling list and count of edges
+    returned.
+
+    Parameters:
+    nodes - Number of nodes to generate for this initial network
+    m - Number of edges per node to attach on average, s.t n*m edges are always created
+
+    Returns:
+    adj_list - Adjacency list representation of the edges of the network
+    sampling_list - Array listing the node location of each nub explicitely for PA sampling
+    edges - Int of number of edges present in the initial graph, always m*nodes
+    """
     edges = nodes * m
 
     edge_list = randomEdges(edges, nodes-1)
@@ -39,14 +54,18 @@ def GenerateInitial(nodes, m):
 
 @jit(nopython = True)
 def randomSample(max_index):
-    #randomly sample a new edge between a pair of nodes, repeating if we get a self loop
-
+    """
+    Randomly sample a new edge between a pair of nodes, repeating if we get a self loop.
+    Runs in parallel and is used when generating initial and ER graphs. Returns an edge
+    of node1 and node2.
+    """
     x1 = random.randint(0, max_index)
     x2 = random.randint(0, max_index)
     while x1 == x2:
         x2 = random.randint(0, max_index)
         
     return (x1, x2)
+
 
 @jit(nopython = True, parallel=True)
 def BASample(node_id, sampling_list):
@@ -67,6 +86,7 @@ def randomEdges(n_edges, max_index):
         edge_list[i] = randomSample(max_index)
 
     return edge_list
+#
 
 @jit(nopython = True)
 def edgeToAdjacency(edge_list, adj_list, nodes):
@@ -97,6 +117,7 @@ def edgeToAdjacency(edge_list, adj_list, nodes):
 
     return adj_list, count
 
+
 @jit(nopython = True)
 def isEdgePresent(val, list):
     for i in range(len(list)):
@@ -104,7 +125,6 @@ def isEdgePresent(val, list):
             return True
     return False
         
-
 
 def BA(n_total, m, n_initial):
     
@@ -119,6 +139,9 @@ def BA(n_total, m, n_initial):
     
     #now drive network using samoling
     pass
+
+
+
 
 a, b, c = GenerateInitial(5, 1)
 
