@@ -4,12 +4,11 @@ import random
 from numba import jit
 from numba import prange
 from numba.typed import List
-import networkx as nx
 import timeit
-
+import pandas as pd
 
 @jit(nopython = True)
-def GenerateInitial(nodes, m):
+def GenerateRandom(nodes, m, n_final):
     """
     Method to generate initial random network, method generates prospective edges in 
     parallel before checking for duplicates and removing these, generating more edges
@@ -32,7 +31,7 @@ def GenerateInitial(nodes, m):
     edges = nodes * m
 
     edge_list = randomEdges(edges, nodes-1)     #max node index will be nodes-1
-    adj_list = [[np.int64(x) for x in range(0)] for i in range(nodes)]      #explicitely typing blank list of lists for numba acceleration
+    adj_list = [[np.int64(x) for x in range(0)] for i in range(n_final)]      #explicitely typing blank list of lists for numba acceleration
     
     adj_list, count = edgeToAdjacency(edge_list, adj_list)   #get adjacency list from edge list
     
@@ -51,6 +50,41 @@ def GenerateInitial(nodes, m):
     #get n and nubs
     #get sample list as len of each element of edge list
 
+
+    return adj_list, sampling_list, freq_list
+
+@jit(nopython = True, parallel = True)
+def GenerateInitial(m, nodes_final):
+    """
+    Generates a single complete graph with m edges per node, and so this method always
+    returns a network of m+1 nodes, with 1 unique network per value of m
+
+    Parameters
+    ----------
+    m : Number of edges per node, all m+1 nodes will have m edges
+    nodes_final: Used for initialising length of adj_list, final number of nodes in network, must be > m
+
+    Returns
+    -------
+    adj_list : Adjacency list representation of the edges of the network
+    sampling_list : Array listing the node location of each nub explicitely for PA sampling
+    freq_list : Array of number of nubs per node
+    """
+    if(nodes_final <= m):
+        raise ValueError("ERROR: Nodes must be greater than m")
+    
+    adj_list = [[np.int64(x) for x in range(0)] for i in range(nodes_final)]      #explicitely typing blank list of lists for numba acceleration
+
+    for i in prange(m+1):
+        edge_list = [x for x in range(m+1) if x != i]
+        adj_list[i] = edge_list
+
+    sampling_list = List()
+    freq_list = [np.uint16(len(x)) for x in adj_list]
+    
+    for i in range(len(freq_list)):
+        for j in range(freq_list[i]):
+            sampling_list.append(i)
 
     return adj_list, sampling_list, freq_list
 
@@ -75,7 +109,7 @@ def BASample(n_edges, node_id, sampling_list):
     max_index = len(sampling_list) - 1   
     edge_list = np.zeros(shape=(n_edges,2), dtype= np.int_) #dtype as int32 for performance so long as n_edges < 2 billion
     
-    for i in prange(n_edges):      #create edges for this new node in parallel
+    for i in range(n_edges):      #create edges for this new node in parallel
         edge_list[i] = (sampling_list[random.randint(0, max_index)], node_id)
     
     return edge_list
@@ -147,19 +181,11 @@ def edgeToAdjacencyBA(edge_list, adj_list, sampling_list, freq_list, first_attem
                 #   pass
         if valid:
             adj_list[a[0]].append(a[1])
+            adj_list[a[1]].append(a[0])
             sampling_list.append(a[0])
             sampling_list.append(a[1])
             freq_list[a[0]] += 1
-            
-            if first_attempt:
-                adj_list.append([a[0]])
-                freq_list.append(1)
-                
-                first_attempt = False
-                
-            else:
-                adj_list[a[1]].append(a[0])
-                freq_list[a[1]] += 1
+            freq_list[a[1]] += 1
 
     return adj_list, sampling_list, freq_list, count
 
@@ -172,13 +198,13 @@ def isEdgePresent(val, list):
     return False
         
 @jit(nopython = True)
-def BA(n_total, m, n_initial):
+def BA(n_total, m):
     
     #Generate initial network as random with n_inital nodes of m edges
-    adj_list, sampling_list, freq_list = GenerateInitial(n_initial, m)
-    n_current = n_initial - 1
+    adj_list, sampling_list, freq_list = GenerateInitial(m, n_total)
+    n_current = m
     
-    for i in range(n_total - n_initial):   
+    for i in range(n_total - m - 1):   
         n_current += 1
         edge_list = BASample(m, n_current, sampling_list)
         
@@ -191,9 +217,8 @@ def BA(n_total, m, n_initial):
     return adj_list, sampling_list, freq_list
 
 
-
-
-adj, samp, freq = BA(20, 2, 10)
-
+#adj, samp, freq = BA(200000, 9)
+#adj, samp, freq = GenerateInitial(10, 2, 20)
 #need to change appending to adjacency list to add a new node
+
 
