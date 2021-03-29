@@ -6,9 +6,10 @@ from numba import prange
 from numba.typed import List
 import timeit
 import pandas as pd
+import matplotlib.pyplot as plt
 
 @jit(nopython = True)
-def GenerateRandom(nodes, m, n_final):
+def GenerateRandom(nodes, m):
     """
     Method to generate initial random network, method generates prospective edges in 
     parallel before checking for duplicates and removing these, generating more edges
@@ -31,7 +32,7 @@ def GenerateRandom(nodes, m, n_final):
     edges = nodes * m
 
     edge_list = randomEdges(edges, nodes-1)     #max node index will be nodes-1
-    adj_list = [[np.int64(x) for x in range(0)] for i in range(n_final)]      #explicitely typing blank list of lists for numba acceleration
+    adj_list = [[np.int64(x) for x in range(0)] for i in range(nodes)]      #explicitely typing blank list of lists for numba acceleration
     
     adj_list, count = edgeToAdjacency(edge_list, adj_list)   #get adjacency list from edge list
     
@@ -39,19 +40,19 @@ def GenerateRandom(nodes, m, n_final):
         edge_list = randomEdges(count, nodes-1)
         adj_list, count = edgeToAdjacency(edge_list, adj_list)   #update count with updated number of duplicate entries following replacing of initial duplicates
    
-    sampling_list = List()
-    freq_list = [len(x) for x in adj_list]
+    #sampling_list = List()
+    freq_list = [np.uint32(len(x)) for x in adj_list]
     
-    for i in range(len(freq_list)):
-        for j in range(freq_list[i]):
-            sampling_list.append(i)
+    #for i in range(len(freq_list)):
+     #   for j in range(freq_list[i]):
+      #      sampling_list.append(i)
     
     #convert to adj list
     #get n and nubs
     #get sample list as len of each element of edge list
 
 
-    return adj_list, sampling_list, freq_list
+    return adj_list, freq_list
 
 @jit(nopython = True, parallel = True)
 def GenerateInitial(m, nodes_final):
@@ -80,7 +81,7 @@ def GenerateInitial(m, nodes_final):
         adj_list[i] = edge_list
 
     sampling_list = List()
-    freq_list = [np.uint16(len(x)) for x in adj_list]
+    freq_list = [np.uint32(len(x)) for x in adj_list]
     
     for i in range(len(freq_list)):
         for j in range(freq_list[i]):
@@ -114,6 +115,15 @@ def BASample(n_edges, node_id, sampling_list):
     
     return edge_list
 
+@jit(nopython = True)
+def MixedSample(n_edges, node_id):
+
+    edge_list = np.zeros(shape=(n_edges,2), dtype= np.int_) #dtype as int32 for performance so long as n_edges < 2 billion
+    
+    for i in range(n_edges):      #create edges for this new node in parallel
+        edge_list[i] = (random.randint(0, node_id-1), node_id)
+    
+    return edge_list
 
 @jit(nopython = True, parallel = True)
 def randomEdges(n_edges, max_index):
@@ -173,6 +183,8 @@ def edgeToAdjacencyBA(edge_list, adj_list, sampling_list, freq_list, first_attem
             if isEdgePresent(a[1], adj_list[a[0]]) == True:
                 valid = False
                 count += 1
+                #print(adj_list)
+                #print(a[])
                 #get new pair and check this is unique
                 #is_pair_unique = False
                 #while not is_pair_unique:
@@ -216,9 +228,39 @@ def BA(n_total, m):
         
     return adj_list, sampling_list, freq_list
 
+@jit(nopython = True)
+def Mixed(n_total, m, p_BA):
+    
+    #Generate initial network as random with n_inital nodes of m edges
+    adj_list, sampling_list, freq_list = GenerateInitial(m, n_total)
+    n_current = m
+    
+    for i in range(n_total - m - 1):   
+        n_current += 1
+        isBANode = False
+        #Depending on random value then choose sampling method
+        if random.random() > p_BA:
+            edge_list = MixedSample(m, n_current)
+
+        else: 
+            edge_list = BASample(m, n_current, sampling_list)
+            isBANode = True
+        
+        adj_list, sampling_list, freq_list, count = edgeToAdjacencyBA(edge_list, adj_list, sampling_list, freq_list, True)   #get adjacency list from edge list
+        
+        while count != 0:
+            if isBANode:
+                edge_list = BASample(count, n_current, sampling_list)
+            else:
+                edge_list = MixedSample(count, n_current)
+
+            adj_list, sampling_list, freq_list, count = edgeToAdjacencyBA(edge_list, adj_list, sampling_list, freq_list, False)
+        
+    return adj_list, sampling_list, freq_list
 
 #adj, samp, freq = BA(200000, 9)
-#adj, samp, freq = GenerateInitial(10, 2, 20)
+adj, samp, freq = Mixed(100, 3, (2/3))
+#adj, freq = GenerateRandom(10000000, 2)
 #need to change appending to adjacency list to add a new node
 
 
